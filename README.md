@@ -50,6 +50,41 @@ Build a system that:
 - Get notified every 6 hours with collection stats
 - Send latest captures on schedule
 - Optionally send feeding confirmations
+- On-demand commands via `tg_bot.py` (see below)
+
+### On-demand bot (`tg_bot.py`)
+
+`tg_bot.py` long-polls the Telegram Bot API (no webhook/public URL needed) and
+answers commands sent to the bot's chat. It only replies to the authorized chat
+(`TG_CHAT_ID` in `.env`):
+
+| Command | Action |
+|---------|--------|
+| `/last [n]` | Sends the last *n* cat photos (default 1, max 10) |
+| `/snap` | Takes and sends a live snapshot from the camera (signals `watch_cat.py` to grab the frame, or snaps directly if it isn't running) |
+| `/stats` | Sends capture counters (total, cat photos, JPEGs on disk) |
+| `/help` | Lists the commands |
+
+Run it alongside the watcher:
+
+```bash
+uv run tg_bot.py
+```
+
+To keep both running in the background (survives logout):
+
+```bash
+nohup uv run watch_cat.py --notify >> watch_cat.out 2>&1 &
+nohup uv run tg_bot.py >> tg_bot.out 2>&1 &
+```
+
+To make the bot (and optionally the watcher) auto-start at boot and restart on
+crash, install it as a systemd *user* service:
+
+```bash
+bash install-tg-bot.sh          # after syncing to the Pi
+systemctl --user status tg-bot.service
+```
 
 ## Files
 
@@ -57,6 +92,8 @@ Build a system that:
 |------|---------|
 | `capture_data.py` | Collects training images using MobileNet cat detection |
 | `watch_cat.py` | Long-running, low-energy watcher (change detector + model gate, rolling quota) |
+| `tg_bot.py` | Long-polling Telegram bot: `/last [n]`, `/stats`, `/help` commands |
+| `install-tg-bot.sh` | Installs `tg_bot.py` as a boot-persistent systemd user service |
 | `classify.py` | (future) Runs custom-trained model for Julio/Lina identification |
 | `feeder.py` | (future) Controls servo + acts on classification results |
 | `common.py` | Shared helpers (env, labels, cat check, TFLite model loading, state) |

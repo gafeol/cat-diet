@@ -99,6 +99,7 @@ def main() -> None:
             run += 1
     finally:
         cam.stop()
+        cam.close()
 
 
 if __name__ == "__main__":

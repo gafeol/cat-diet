@@ -25,6 +25,7 @@ import argparse
 import logging
 import os
 import random
+import signal
 import sys
 import time
 from argparse import Namespace
@@ -152,6 +153,21 @@ class Watcher:
         self.fp_captures = 0
         self.last_debug = 0.0
 
+        # On-demand snapshots (SIGUSR1, sent by tg_bot on /snap)
+        signal.signal(signal.SIGUSR1, self._handle_snap)
+
+    def _handle_snap(self, signum: int, frame) -> None:
+        """Capture a frame immediately and send it to Telegram."""
+        try:
+            cam_frame = self.cam.capture_array("main")
+            path = self._save_and_count(cam_frame, self.args.capture_dir, "snap")
+            if path and tg.configured(self.token, self.chat_id):
+                tg.send_photos([path], "📸 Snapshot", self.token, self.chat_id)
+            elif path:
+                logging.info("snap saved but Telegram not configured: %s", path)
+        except Exception as e:
+            logging.warning("snapshot failed: %s", e)
+
     def run(self) -> None:
         run = 0
         try:
@@ -162,6 +178,7 @@ class Watcher:
             logging.info("Stopped by user.")
         finally:
             self.cam.stop()
+            self.cam.close()
 
     def _step(self) -> None:
         frame = self.cam.capture_array("main")
@@ -174,7 +191,7 @@ class Watcher:
         diff = float(np.abs(gray - self.bg).mean())
 
         if self.mode == "idle":
-            self._handle_idle(frame, now, diff)
+            self._handle_idle(frame, gray, now, diff)
         else:
             self._handle_event(frame, now, diff)
 
@@ -196,7 +213,7 @@ class Watcher:
         else:
             time.sleep(self.args.event_interval)
 
-    def _handle_idle(self, frame: np.ndarray, now: float, diff: float) -> None:
+    def _handle_idle(self, frame: np.ndarray, gray: np.ndarray, now: float, diff: float) -> None:
         a = self.args
         if diff >= a.motion_threshold:
             self.mode = "event"

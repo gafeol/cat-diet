@@ -1,0 +1,14 @@
+[Unit]
+Description=cat-diet Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/cat-diet
+ExecStart=%h/cat-diet/.venv/bin/python tg_bot.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

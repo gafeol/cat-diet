@@ -38,6 +38,11 @@ if ! command -v uv &>/dev/null; then
     source "$HOME/.local/bin/env"
 fi
 
+log "Creating venv with system site-packages (uses system Python 3.11)..."
+rm -rf .venv
+rm -f .python-version
+uv venv --system-site-packages --python /usr/bin/python3
+
 log "Checking if we need more swap for Pillow compilation (Pi 2B has ~1GB RAM)..."
 SWAP_SIZE=$(swapon --show=SIZE --noheadings 2>/dev/null | head -1 | awk '{print $1}' || echo "0")
 if [[ "$SWAP_SIZE" -lt 1000000 ]]; then
@@ -50,7 +55,10 @@ fi
 
 log "Syncing Python dependencies with uv..."
 cd "$(dirname "$0")"
-uv sync
+uv sync --no-build-isolation
+
+log "Installing tflite-runtime into the venv (no deps; numpy comes from system)..."
+uv pip install --python .venv/bin/python3 --no-deps "tflite-runtime==2.14.0"
 
 log "Bootstrap complete. Run the watcher with:"
 echo "  uv run watch_cat.py --debug --notify"

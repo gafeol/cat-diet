@@ -8,6 +8,7 @@ polling, so no public webhook URL is required (works behind NAT on the Pi).
 Commands:
   /help, /start, help   show this help
   /last [n]             send the last n cat photos (default 1, max 10)
+  /snap                 take and send a live snapshot from the camera
   /stats, stats         send capture counters
 """
 from __future__ import annotations
@@ -16,6 +17,8 @@ import argparse
 import glob
 import logging
 import os
+import signal
+import subprocess
 import time
 
 import common
@@ -25,11 +28,14 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 HELP_TEXT = (
     "🐈 cat-diet bot\n"
     "/last [n] — last n cat photos (default 1, max 10)\n"
+    "/snap     — live snapshot from the camera\n"
     "/stats    — capture counts\n"
     "/help     — this message"
 )
 
 MAX_PHOTOS = 10
+SNAP_WIDTH = 1280
+SNAP_HEIGHT = 720
 
 
 def _is_cat_file(path: str) -> bool:
@@ -46,6 +52,44 @@ def find_last_cat_photos(capture_dir: str, n: int = 1) -> list[str]:
     ]
     candidates.sort(key=os.path.getmtime, reverse=True)
     return candidates[: max(0, min(n, MAX_PHOTOS))]
+
+
+def signal_watcher() -> bool:
+    """Ask the running watch_cat (camera owner) to snap via SIGUSR1."""
+    try:
+        out = subprocess.run(
+            ["pgrep", "-f", "watch_cat.py"], capture_output=True, text=True
+        )
+        pids = out.stdout.split()
+        if not pids:
+            return False
+        for pid in pids:
+            os.kill(int(pid), signal.SIGUSR1)
+        return True
+    except Exception as e:
+        logging.warning("signal_watcher failed: %s", e)
+        return False
+
+
+def take_snapshot(width: int, height: int, capture_dir: str) -> str:
+    """Grab one frame from the camera and save it; returns the JPEG path."""
+    from datetime import datetime
+
+    from PIL import Image
+
+    cam = common.start_camera(width, height, warmup=0.5)
+    try:
+        frame = cam.capture_array("main")
+        os.makedirs(capture_dir, exist_ok=True)
+        path = os.path.join(
+            capture_dir,
+            datetime.now().strftime("%Y%m%d_%H%M%S") + "_snap.jpg",
+        )
+        Image.fromarray(frame).save(path, quality=85)
+        return path
+    finally:
+        cam.stop()
+        cam.close()
 
 
 def stats_text(capture_dir: str) -> str:
@@ -67,6 +111,19 @@ def handle_message(text: str, capture_dir: str) -> tuple[str, list[str]]:
         return HELP_TEXT, []
     if low in ("/stats", "stats", "statistics", "counts"):
         return stats_text(capture_dir), []
+    if low in ("/snap", "snapshot", "snap", "photo now", "take photo", "take a picture"):
+        if signal_watcher():
+            return "📸 Snapshot coming...", []
+        try:
+            path = take_snapshot(SNAP_WIDTH, SNAP_HEIGHT, capture_dir)
+            return "Snapshot:", [path]
+        except Exception as e:
+            logging.warning("snapshot failed: %s", e)
+            return (
+                "Snapshot failed (no watcher running to capture it): "
+                + str(e),
+                [],
+            )
     if low.startswith("/last") or any(
         low.startswith(w) for w in ("last ", "latest", "last photo", "last picture", "last cat", "photo", "picture", "foto", "cat pic")
     ):
@@ -82,7 +139,7 @@ def handle_message(text: str, capture_dir: str) -> tuple[str, list[str]]:
         count = len(photos)
         return f"Latest {count} cat photo{'s' if count > 1 else ''}:", photos
     return (
-        "Unknown command. Try /last [n], /stats or /help.",
+        "Unknown command. Try /last [n], /snap, /stats or /help.",
         [],
     )
 

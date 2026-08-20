@@ -1,0 +1,14 @@
+[Unit]
+Description=cat-diet camera watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/cat-diet
+ExecStart=%h/cat-diet/.venv/bin/python watch_cat.py --notify
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
