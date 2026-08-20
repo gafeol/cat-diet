@@ -56,26 +56,57 @@ Build a system that:
 | File | Purpose |
 |------|---------|
 | `capture_data.py` | Collects training images using MobileNet cat detection |
+| `watch_cat.py` | Long-running, low-energy watcher (change detector + model gate, rolling quota) |
 | `classify.py` | (future) Runs custom-trained model for Julio/Lina identification |
 | `feeder.py` | (future) Controls servo + acts on classification results |
+| `common.py` | Shared helpers (env, labels, cat check, TFLite model loading, state) |
+| `telegram.py` | Telegram send primitives (`send_message`, `send_photos`) |
+| `quota.py` | Rolling disk quota on the captures directory |
 | `mobilenet_v1_1.0_224_quant.tflite` | Detection model (already on device) |
 | `labels_mobilenet_quant_v1_224.txt` | Labels for the detection model |
 | `.env` | `TG_TOKEN`, `TG_CHAT_ID` for Telegram bot |
+
+## Captured Images
+
+All filenames are prefixed with a day+hour timestamp (`YYYYMMDD_HHMMSS`).
+The watcher (`watch_cat.py`) routes saves into three places:
+
+| Folder | Example file | Meaning | Training class |
+|--------|--------------|---------|----------------|
+| `captures/` | `20260816_143205_cat_jaguar_0.85.jpg` | Motion detected **and** model says a cat is present | `Julio` / `Lina` |
+| `captures/false_positives/` | `20260816_143205_fp_dog_0.70.jpg` | Motion triggered, but the model says **not** a cat | Review carefully — mostly `Background`, but a cat here means the detector missed it |
+| `captures/bg/` | `20260816_143205_idle.jpg` | Random idle sample (~1/hour) of the empty bowl | `Background` |
+
+- `captures/` photos need to be sorted into `cat1/` (Julio) and `cat2/` (Lina) folders for training.
+- `captures/bg/` can be moved to a `nothing/` folder as-is.
+- `captures/false_positives/` should be skimmed: legitimate "no cat, just motion" frames go to `nothing/`; frames that *do* contain a cat are detection misses and should be sorted into the cat folders (and flagged — the detector should have caught them).
+- For 3-class training the model learns `Julio / Lina / Background`, so the background class gets the empty-view samples.
+- Disk is capped by a rolling quota (default 200MB): the oldest files are auto-deleted when it's exceeded.
 
 ## Quick Start
 
 1. Set up `.env` with your Telegram bot token and chat ID
 2. Put `mobilenet_v1_1.0_224_quant.tflite` and labels in the project folder
-3. Run `capture_data.py` to collect training images:
+3. `uv sync` to install dependencies
+4. Run `capture_data.py` to collect training images:
    ```bash
-   pip install numpy pillow requests tflite-runtime picamera2
-   python capture_data.py --runs -1 --interval 5
+   uv run capture_data.py --runs -1 --interval 5
    ```
-4. Sort `captures/` into `cat1/` (Julio) and `cat2/` (Lina) folders
-5. Train on MacBook/cloud → export `.tflite` → deploy to Pi
-6. Build the servo mechanism and write `feeder.py`
+5. Or leave `watch_cat.py` running for days (low-energy, event-driven):
+   ```bash
+   uv run watch_cat.py --notify
+   ```
+   See the "Captured Images" section for what each folder contains. Tune
+   `--motion-threshold` (start ~3.0, raise if it fires on noise, lower if it
+   misses real motion) and `--bg-check` (default 30s) to taste.
+
+6. Sort `captures/` into `cat1/` (Julio) and `cat2/` (Lina) folders
+7. Train on MacBook/cloud → export `.tflite` → deploy to Pi
+8. Build the servo mechanism and write `feeder.py`
 
 ## Notes
 
-- The Pi 2B is slow for inference (~200-500ms/frame) — optimize by skipping every other frame
-- Use the 6-hour Telegram updates to track dataset collection progress
+- The Pi 2B is slow for inference (~200-500ms/frame)
+- During idle, `watch_cat.py` runs the full model only every ~30s plus on motion, keeping CPU close to idle the rest of the time
+- Use `watch_cat.py --notify` to get a Telegram photo when a cat is detected
+- Logs are written to `watch_cat.log` (rotating, max 10 MiB) and can be viewed with `tail -f watch_cat.log` over SSH

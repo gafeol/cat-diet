@@ -1,0 +1,20 @@
+[project]
+name = "cat-diet"
+version = "0.1.0"
+description = "Smart cat feeder with cat identification"
+readme = "README.md"
+authors = [
+    { name = "gafeol", email = "gabfeol@gmail.com" }
+]
+# Can't go to 3.12 due to no ai-edge-litert support for 32bit arm
+requires-python = ">=3.9,<3.12"
+# System packages (apt) provide numpy, pillow, picamera2, tflite-runtime on the Pi.
+# uv only manages pure-Python deps; see bootstrap-pi.sh for the apt installs.
+dependencies = [
+    "requests",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"

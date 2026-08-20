@@ -1,0 +1,75 @@
+# cat-diet configuration
+# All values are defaults; command-line flags override these.
+
+[detect]
+# Capture resolution
+width = 640
+height = 360
+
+# Change-detection frame (small, grayscale, fast)
+det_width = 96
+det_height = 54
+
+# Mean absolute difference (0-255) on detection frame that counts as motion
+motion_threshold = 3.0
+
+# Background absorption rate per idle frame (0-1)
+bg_alpha = 0.08
+
+# Cat score threshold (0-1)
+cat_threshold = 0.05
+
+# Model input size (must match tflite model)
+input_size = 224
+
+[schedule]
+# Starting idle check interval (seconds)
+idle_interval = 5.0
+
+# Max idle check interval (seconds)
+idle_max = 60.0
+
+# Sampling interval during events (seconds)
+event_interval = 0.7
+
+# Seconds of no motion that end an event
+event_dwell = 2.0
+
+# Max event length (seconds)
+event_max = 120.0
+
+# Periodic full-model check during idle (seconds) - catches stationary cats
+bg_check = 30.0
+
+# Minimum seconds between any photo save
+min_save_interval = 1.0
+
+# Idle "nothing in view" sample interval (seconds) - ~1/hour
+bg_sample_interval = 3600.0
+
+# Random extra delay up to this many seconds for idle samples
+bg_jitter = 600.0
+
+[storage]
+# JPEG quality (1-100)
+jpeg_quality = 80
+
+# Rolling disk quota on the whole capture dir (MB)
+quota_mb = 200.0
+
+# Max files in captures/bg/
+bg_cap = 400
+
+# Max files in captures/false_positives/
+fp_cap = 500
+
+# Capture directory name
+capture_dir = "captures"
+
+[telegram]
+# Minimum seconds between Telegram photo notifications
+notify_interval = 300.0
+
+# Model and labels paths (relative to watch_cat.py)
+model = "mobilenet_v1_1.0_224_quant.tflite"
+labels = "labels_mobilenet_quant_v1_224.txt"
